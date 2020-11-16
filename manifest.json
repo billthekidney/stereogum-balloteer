@@ -1,0 +1,19 @@
+{
+    "description": "\"Fixes\" the upvote and downvote buttons in stereogum.com comment threads by putting the score between them.",
+    "manifest_version": 2,
+    "name": "Stereogum Balloteer",
+    "version": "0.0.2",
+    "icons": {
+	"16": "icons/twotone_thumbs_up_down_16.png",
+	"18": "icons/twotone_thumbs_up_down_18.png",
+	"32": "icons/twotone_thumbs_up_down_32.png",
+	"36": "icons/twotone_thumbs_up_down_36.png"
+    },
+    "content_scripts": [
+	{
+	    "matches": ["https://*.stereogum.com/*"],
+	    "js": ["ballot.js"],
+	    "run_at": "document_end"
+	}
+    ]
+}
