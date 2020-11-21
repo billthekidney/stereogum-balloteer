@@ -1,74 +1,118 @@
 var commentListRoot = null;
 
+var loadMoreCommentsTimeout = null;
+const loadMoreCommentsDelay = 5 * 1000;
+var loadedMoreComments = false;
+var numCommentsLoaded = 0;
+const commentsLoadedThreshold = 20;
+
+function loadMoreComments() {
+    loadMoreCommentsTimeout = null;
+    let button = document.getElementById("load-more-comments");
+    if (button) {
+	loadedMoreComments = true;
+	button.click();
+    } 
+}
+
 function fixCommentVoting() {
     let comment_scores = commentListRoot.querySelectorAll("div.comment-info-and-votes > span.date ~ a.up.vote-for-comment ~ a.down.vote-for-comment ~ span.comment-score")
     if (comment_scores == null || comment_scores.length == 0) {
 	// This will be nil if something changed but we don't care about any of those changes.
-	//console.log("stereogum-balloteer: comment_scores not found");
+
+	// Hit the load-more-comments button at most once every loadMoreCommentsDelay seconds
+	//Don't need this for first load-more (... && numCommentsLoaded >= commentsLoadedThreshold)
+	// If the button is present there are more comments to load.
+	if (!loadedMoreComments) {
+	    if (loadMoreCommentsTimeout) {
+		clearTimeout(loadMoreCommentsTimeout);
+	    }
+	    loadMoreCommentsTimeout = setTimeout(loadMoreComments, loadMoreCommentsDelay);
+	}
 	return;
     }
 
-    i = 0;
     [].slice.call(comment_scores).forEach(function (commentScore) {
 	let downVote = commentScore.previousSibling;
 	if (downVote.nodeName != "A" || !downVote.classList.contains("down", "vote-for-comment")) {
-	    //console.log("QQQ: balloteer: comment " + i + ": a.down not to left of " + commentScore.nodeName + "." + commentScore.classList);
-	    i += 1;
 	    return;
 	}
 	let comment = commentScore.parentElement;
 	let oldCountSpan = comment.removeChild(commentScore);
 	comment.insertBefore(oldCountSpan, downVote);
-	i += 1;
+	numCommentsLoaded += 1;
     });
 }
-
-var getCommentListTry = 0;
-var getCommentListLimit = 10;
-var getCommentListTimeout = 3 * 1000;
 
 var commentObserver;
 
 function comments_changed_callback(mutations) {
     try {
-	//let t1 = new Date();
 	fixCommentVoting();
-	//let t2 = new Date();
-	//console.log("QQQ: balloteer: time to change " + mutations.length + " items: " + ((t2 - t1) / 1000) + " msecs");
     }catch(ex) {
 	console.log("stereogum-balloteer: error in fixCommentVoting: " + ex);
 	console.table(ex);
     }
 }
 
-function startTheObserver() {
-    //TODO: Consider verifying that
-    // $body.classList matches "page--post-template" although the class-name might be longer,
-    // like page--post-template-default
-    commentListRoot = document.querySelector("ol.commentlist-ice.noavas");
-    if (!commentListRoot) {
-	getCommentListTry += 1;
-	if (getCommentListTry > getCommentListLimit) {
-	    // This happens for non-article items
-	    //console.log("QQQ: stereogum-balloteer: can't find comment-list at ol.commentlist-ice.noavas")
+var selectors = ["div#content",
+		 "div.article__content",
+		 "div.article-comments",
+		 "div#comments",
+		 "ol.commentlist-ice.noavas"];
+var selector_first_index = 0;
+var current_selector_node = document;
+var selector_last_index = selectors.length - 1;
+
+function lookForLowestNode() {
+    var i;
+    for (i = selector_last_index; i >= selector_first_index; i -= 1) {
+	var node = current_selector_node.querySelector(selectors[i]);
+	if (node) {
+	    if (commentObserver) {
+		commentObserver.disconnect();
+	    }
+	    if (i == selector_last_index) {
+		commentListRoot = node;
+		commentObserver = new MutationObserver(comments_changed_callback);
+		commentObserver.observe(commentListRoot, {subtree: true, childList: true});
+	    } else {
+		selector_first_index = i;
+		current_selector_node = node;
+		commentObserver = new MutationObserver(children_changed_callback);
+		commentObserver.observe(node, {childList: true});
+	    }
 	    return;
 	}
-	//console.log("QQQ: stereogum-balloteer: didn't get a comment-list at attempt " + getCommentListTry);
-	setTimeout(startTheObserver, getCommentListTimeout);
-	return;
     }
+}
+		
+
+function safeLookForLowestNode() {
     try {
-	commentObserver = new MutationObserver(comments_changed_callback);
-	commentObserver.observe(commentListRoot, {subtree: true, childList: true});
+	lookForLowestNode();
     } catch(ex) {
-	console.log("stereogum-balloteer: error trying to start the observer: " + ex);
+	console.log("stereogum-balloteer: error in lookForLowestNode: " + ex);
 	console.table(ex);
     }
 }
 
+function children_changed_callback(mutations) {
+    safeLookForLowestNode();
+}
+
+
+function findArticleDiv() {
+    var node = document.querySelector("div.article");
+    if (!node) {
+	return;
+    }
+    safeLookForLowestNode();
+}
+
 try {
-    startTheObserver();
+    findArticleDiv();
 } catch(ex) {
-    console.log("stereogum-balloteer: error in the observer: " + ex);
+    console.log("stereogum-balloteer: error in findCommentList: " + ex);
     console.table(ex);
 }
